@@ -70,47 +70,47 @@ class ddpm(L.LightningModule):
         alphas = 1 - betas
         return betas.to('cuda:0'), alphas.to('cuda:0'), cumalphas.to('cuda:0')
 
-    def theta_post_1(self, xt: Tensor, x0: Tensor, t: Tensor) -> Tensor:
-        t = t - 1
-
-        alphas_t = self.alphas[t][..., None]
-        cumalphas_tm1 = self.cumalphas[t - 1][..., None]
-        alphas_t[t == 0] = 0.0
-        cumalphas_tm1[t == 0] = 1.0
-        theta = ((alphas_t * xt + (1 - alphas_t) / self.num_classes) *
-                 (cumalphas_tm1 * x0 + (1 - cumalphas_tm1) / self.num_classes))
-        return theta / theta.sum(dim=1, keepdim=True)
-
-    def theta_post_prob(self, xt: Tensor, theta_x0: Tensor, t: Tensor) -> Tensor:
-        """
-        This is equivalent to calling theta_post with all possible values of x0
-        from 0 to C-1 and multiplying each answer times theta_x0[:, c].
-
-        This should be used when x0 is unknown and what you have is a probability
-        distribution over x0. If x0 is one-hot encoded (i.e., only 0's and 1's),
-        use theta_post instead.
-        """
-        t = t - 1
-
-        alphas_t = self.alphas[t][..., None]
-        cumalphas_tm1 = self.cumalphas[t - 1][..., None, None]
-        alphas_t[t == 0] = 0.0
-        cumalphas_tm1[t == 0] = 1.0
-
-        # We need to evaluate theta_post for all values of x0
-        x0 = torch.eye(self.num_classes, device=xt.device)[None, :, :, None, None]
-        # theta_xt_xtm1.shape == [B, C, H, W]
-        theta_xt_xtm1 = alphas_t * xt + (1 - alphas_t) / self.num_classes
-        # theta_xtm1_x0.shape == [B, C1, C2, H, W]
-        theta_xtm1_x0 = cumalphas_tm1 * x0 + (1 - cumalphas_tm1) / self.num_classes
-
-        aux = theta_xt_xtm1[:, :, None] * theta_xtm1_x0
-        # theta_xtm1_xtx0 == [B, C1, C2, H, W]
-        theta_xtm1_xtx0 = aux / aux.sum(dim=1, keepdim=True)
-
-        # theta_x0.shape = [B, C, H, W]
-
-        return torch.einsum("bcdhw,bdhw->bchw", theta_xtm1_xtx0, theta_x0)
+    # def theta_post(self, xt: Tensor, x0: Tensor, t: Tensor) -> Tensor:
+    #     t = t - 1
+    #
+    #     alphas_t = self.alphas[t][..., None]
+    #     cumalphas_tm1 = self.cumalphas[t - 1][..., None]
+    #     alphas_t[t == 0] = 0.0
+    #     cumalphas_tm1[t == 0] = 1.0
+    #     theta = ((alphas_t * xt + (1 - alphas_t) / self.num_classes) *
+    #              (cumalphas_tm1 * x0 + (1 - cumalphas_tm1) / self.num_classes))
+    #     return theta / theta.sum(dim=1, keepdim=True)
+    #
+    # def theta_post_prob(self, xt: Tensor, theta_x0: Tensor, t: Tensor) -> Tensor:
+    #     """
+    #     This is equivalent to calling theta_post with all possible values of x0
+    #     from 0 to C-1 and multiplying each answer times theta_x0[:, c].
+    #
+    #     This should be used when x0 is unknown and what you have is a probability
+    #     distribution over x0. If x0 is one-hot encoded (i.e., only 0's and 1's),
+    #     use theta_post instead.
+    #     """
+    #     t = t - 1
+    #
+    #     alphas_t = self.alphas[t][..., None]
+    #     cumalphas_tm1 = self.cumalphas[t - 1][..., None, None]
+    #     alphas_t[t == 0] = 0.0
+    #     cumalphas_tm1[t == 0] = 1.0
+    #
+    #     # We need to evaluate theta_post for all values of x0
+    #     x0 = torch.eye(self.num_classes, device=xt.device)[None, :, :, None, None]
+    #     # theta_xt_xtm1.shape == [B, C, H, W]
+    #     theta_xt_xtm1 = alphas_t * xt + (1 - alphas_t) / self.num_classes
+    #     # theta_xtm1_x0.shape == [B, C1, C2, H, W]
+    #     theta_xtm1_x0 = cumalphas_tm1 * x0 + (1 - cumalphas_tm1) / self.num_classes
+    #
+    #     aux = theta_xt_xtm1[:, :, None] * theta_xtm1_x0
+    #     # theta_xtm1_xtx0 == [B, C1, C2, H, W]
+    #     theta_xtm1_xtx0 = aux / aux.sum(dim=1, keepdim=True)
+    #
+    #     # theta_x0.shape = [B, C, H, W]
+    #
+    #     return torch.einsum("bcdhw,bdhw->bchw", theta_xtm1_xtx0, theta_x0)
 
     def test_step(self, batch, batch_idx):
         images, masks, classes = batch
@@ -129,6 +129,7 @@ class ddpm(L.LightningModule):
         for time_step in reversed(range(self.n_steps_training)):
             mask_pre_p, class_pre_p = self.model(images, mask_pre_p, class_pre_p, t)
             mask_pre_p = mask_pre_p
+            #####waitng for complment
         # loss = nn.functional.kl_div(class_pre_p, classes) + 0.1 * nn.functional.kl_div(mask_pre_p, masks)
         return mask_pre_p, class_pre_p
 
@@ -162,10 +163,16 @@ class ddpm(L.LightningModule):
                 points[i, :] = random.choice(torch.nonzero(masks[i, :, :]))
             mask_t[i, points[i, 0]:points[i, 0] + 2, points[i, 1]:points[i, 1] + 2] = 1
         mask_pre, class_pre = self.model(images, mask_t, class_t, t)
+
         class_pre_1=self.theta_post_1(class_t, class_0, t)
+        ######waiting for complment
         class_pre_2=self.theta_post_prob_1(class_t,class_pre,t)
+        ######waiting for complment
         mask_pre_1=self.theta_post_2(mask_t, masks, t)
+        ######waiting for complment
         mask_pre_2=self.theta_post_prob_2(mask_t, mask_pre, t)
+        ######waiting for complment
+
         loss_kl = nn.functional.kl_div(
             torch.log(torch.clamp(class_pre_2, min=1e-12)),
             class_pre_1,
